@@ -1,0 +1,139 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+             xmlns:syncfusion="http://schemas.syncfusion.com/maui/toolkit"
+             x:Class="FaceAttendanceApp.ScanAttendancePage"
+             Title="Scan Attendance">
+
+    <Grid x:Name="RootGrid">
+        <!-- CommunityToolkit.Maui's CameraView has no Aspect/PreviewAspect property, so it just
+             fills whatever WidthRequest/HeightRequest box we give it. We now size this box to a
+             square in code-behind (ApplySquarePreviewBounds), centered between the top pill and
+             bottom card/button zone, instead of letting it Fill the whole Grid (which produced
+             the stretched ~3:4 look). -->
+        <toolkit:CameraView
+            x:Name="MainCamera"
+            HorizontalOptions="Center"
+            VerticalOptions="Center"
+            MediaCaptured="MainCamera_MediaCaptured" />
+
+        <Image
+            x:Name="OverlayImage"
+            IsVisible="False"
+            Aspect="AspectFit"
+            HorizontalOptions="Center"
+            VerticalOptions="Center"
+            InputTransparent="True" />
+
+        <syncfusion:SfButton
+            x:Name="SwitchCameraBtn"
+            Text="Switch Camera"
+            Style="{StaticResource AppPrimaryButton}"
+            Clicked="OnSwitchCameraClicked"
+            HorizontalOptions="End"
+            VerticalOptions="Start"
+            Margin="0,20,20,0"
+            WidthRequest="140" />
+
+        <!-- Scanning state pill, top-left -->
+        <Border
+            HorizontalOptions="Start"
+            VerticalOptions="Start"
+            Margin="20,20,0,0"
+            Padding="12,6"
+            StrokeShape="RoundRectangle 20"
+            BackgroundColor="#33000000">
+            <HorizontalStackLayout Spacing="6">
+                <Ellipse
+                    x:Name="ScanPulseDot"
+                    WidthRequest="10"
+                    HeightRequest="10"
+                    Fill="LimeGreen" />
+                <Label
+                    x:Name="ScanStateLabel"
+                    Text="Starting scanner..."
+                    TextColor="White"
+                    FontSize="{StaticResource FontSizeSM}" />
+            </HorizontalStackLayout>
+        </Border>
+
+        <!-- Live result card, bottom -->
+        <Border
+            x:Name="ResultCard"
+            VerticalOptions="End"
+            HorizontalOptions="Fill"
+            Margin="16,0,16,110"
+            Padding="16"
+            StrokeShape="RoundRectangle 16"
+            BackgroundColor="#DD1C1C1E">
+
+            <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
+
+                <!-- Row 0: name + score -->
+                <HorizontalStackLayout Grid.Row="0" Spacing="8">
+                    <Label
+                        x:Name="ResultIcon"
+                        Text="👤"
+                        FontSize="{StaticResource FontSizeXL}" />
+                    <Label
+                        x:Name="ResultNameLabel"
+                        Text="Waiting for face..."
+                        TextColor="White"
+                        FontAttributes="Bold"
+                        FontSize="{StaticResource FontSizeLG}"
+                        VerticalOptions="Center" />
+                    <Label
+                        x:Name="ResultScoreLabel"
+                        Text=""
+                        TextColor="#AAAAAA"
+                        FontSize="{StaticResource FontSizeMD}"
+                        VerticalOptions="Center" />
+                </HorizontalStackLayout>
+
+                <!-- Row 1: PPE chips -->
+                <HorizontalStackLayout Grid.Row="1" Spacing="8">
+                    <syncfusion:SfButton
+                        x:Name="HelmetChip"
+                        Text="Helmet"
+                        Style="{StaticResource AppChipGreen}"
+                        IsVisible="False"
+                        IsEnabled="False" />
+                    <syncfusion:SfButton
+                        x:Name="MaskChip"
+                        Text="Mask"
+                        Style="{StaticResource AppChipBlue}"
+                        IsVisible="False"
+                        IsEnabled="False" />
+                    <syncfusion:SfButton
+                        x:Name="SpoofChip"
+                        Text="Spoof suspected"
+                        Style="{StaticResource AppChipRed}"
+                        IsVisible="False"
+                        IsEnabled="False" />
+                </HorizontalStackLayout>
+
+                <!-- Row 2: timestamp / last saved -->
+                <Label
+                    x:Name="ResultTimestampLabel"
+                    Grid.Row="2"
+                    Text=""
+                    TextColor="{StaticResource AppTextMuted}"
+                    FontSize="{StaticResource FontSizeSM}" />
+
+            </Grid>
+        </Border>
+
+        <syncfusion:SfButton
+            x:Name="StopScanBtn"
+            Text="Stop Scanning"
+            Style="{StaticResource AppDangerButton}"
+            Clicked="OnStopScanClicked"
+            HorizontalOptions="Center"
+            VerticalOptions="End"
+            Margin="0,0,0,30"
+            WidthRequest="180" />
+
+    </Grid>
+
+</ContentPage>

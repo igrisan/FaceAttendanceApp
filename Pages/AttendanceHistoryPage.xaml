@@ -1,0 +1,127 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:syncfusion="http://schemas.syncfusion.com/maui/toolkit"
+             x:Class="FaceAttendanceApp.AttendanceHistoryPage"
+             Title="Attendance History">
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto" Padding="16" RowSpacing="12">
+
+        <Label
+            Grid.Row="0"
+            x:Name="RecordCountLabel"
+            Text="Loading records..."
+            Style="{StaticResource AppSectionLabel}" />
+
+        <HorizontalStackLayout Grid.Row="1" Spacing="10" VerticalOptions="Center">
+            <Label Text="Group by:" VerticalOptions="Center" Style="{StaticResource AppSectionLabel}" />
+            <Picker
+                x:Name="GroupByPicker"
+                WidthRequest="180"
+                SelectedIndexChanged="OnGroupByChanged">
+                <Picker.ItemsSource>
+                    <x:Array Type="{x:Type x:String}">
+                        <x:String>Day</x:String>
+                        <x:String>Worker Name</x:String>
+                        <x:String>None (flat list)</x:String>
+                    </x:Array>
+                </Picker.ItemsSource>
+            </Picker>
+        </HorizontalStackLayout>
+
+        <RefreshView
+            Grid.Row="2"
+            x:Name="HistoryRefreshView"
+            Refreshing="OnRefreshing">
+            <CollectionView
+                x:Name="HistoryCollectionView"
+                IsGrouped="True">
+
+                <CollectionView.GroupHeaderTemplate>
+                    <DataTemplate>
+                        <Border
+                            Padding="12,6"
+                            Margin="0,8,0,4"
+                            StrokeShape="RoundRectangle 8"
+                            BackgroundColor="{StaticResource AppSurfaceLight}">
+                            <Label
+                                Text="{Binding GroupName}"
+                                FontAttributes="Bold"
+                                FontSize="{StaticResource FontSizeMD}"
+                                TextColor="{StaticResource AppTextPrimary}" />
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.GroupHeaderTemplate>
+
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Border
+                            Padding="14"
+                            Margin="0,4"
+                            StrokeShape="RoundRectangle 12"
+                            BackgroundColor="{StaticResource AppSurfaceWhite}">
+                            <Border.Shadow>
+                                <Shadow Brush="Black" Opacity="0.08" Radius="6" Offset="0,2" />
+                            </Border.Shadow>
+
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+
+                                <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                    <Label
+                                        Text="{Binding WorkerNameDisplay}"
+                                        Style="{StaticResource AppCardTitleLabel}" />
+                                    <Label
+                                        Text="{Binding TimestampDisplay}"
+                                        Style="{StaticResource AppTimestampLabel}" />
+                                    <HorizontalStackLayout Spacing="6" Margin="0,4,0,0">
+                                        <syncfusion:SfButton
+                                            Text="Helmet"
+                                            Style="{StaticResource AppChipGreen}"
+                                            IsVisible="{Binding HasHelmet}"
+                                            IsEnabled="False" />
+                                        <syncfusion:SfButton
+                                            Text="Mask"
+                                            Style="{StaticResource AppChipBlue}"
+                                            IsVisible="{Binding HasMask}"
+                                            IsEnabled="False" />
+                                        <syncfusion:SfButton
+                                            Text="Synced"
+                                            Style="{StaticResource AppChipGray}"
+                                            IsVisible="{Binding Synced}"
+                                            IsEnabled="False" />
+                                    </HorizontalStackLayout>
+                                </VerticalStackLayout>
+
+                                <Label
+                                    Grid.Column="2"
+                                    Text="{Binding ScoreDisplay}"
+                                    FontSize="{StaticResource FontSizeSM}"
+                                    TextColor="{StaticResource AppTextMuted}"
+                                    VerticalOptions="Start" />
+
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+
+                <CollectionView.EmptyView>
+                    <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Spacing="8" Padding="40">
+                        <Label Text="" FontSize="40" HorizontalOptions="Center" />
+                        <Label Text="No attendance records yet" FontSize="{StaticResource FontSizeLG}" TextColor="{StaticResource AppTextMuted}" HorizontalOptions="Center" />
+                    </VerticalStackLayout>
+                </CollectionView.EmptyView>
+
+            </CollectionView>
+        </RefreshView>
+
+        <syncfusion:SfButton
+            Grid.Row="3"
+            Text="Back"
+            Style="{StaticResource AppSecondaryButton}"
+            Clicked="OnBackClicked"
+            HorizontalOptions="Center"
+            WidthRequest="180" />
+
+    </Grid>
+
+</ContentPage>

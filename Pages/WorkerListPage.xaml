@@ -1,0 +1,89 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:syncfusion="http://schemas.syncfusion.com/maui/toolkit"
+             x:Class="FaceAttendanceApp.WorkerListPage"
+             Title="Worker List">
+
+    <Grid RowDefinitions="Auto,*" Padding="16" RowSpacing="12">
+
+        <Label
+            Grid.Row="0"
+            x:Name="WorkerCountLabel"
+            Text="Loading workers..."
+            Style="{StaticResource AppSectionLabel}" />
+
+        <RefreshView
+            Grid.Row="1"
+            x:Name="ListRefreshView"
+            Refreshing="OnRefreshing">
+            <CollectionView
+                x:Name="WorkerCollectionView">
+
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Border
+                            Padding="14"
+                            Margin="0,4"
+                            StrokeShape="RoundRectangle 12"
+                            BackgroundColor="{StaticResource AppSurfaceWhite}">
+                            <Border.Shadow>
+                                <Shadow Brush="Black" Opacity="0.08" Radius="6" Offset="0,2" />
+                            </Border.Shadow>
+
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+
+                                <VerticalStackLayout Grid.Column="0" Spacing="2">
+                                    <Label
+                                        Text="{Binding Name}"
+                                        Style="{StaticResource AppCardTitleLabel}" />
+                                    <Label
+                                        Text="{Binding IdDisplay}"
+                                        FontSize="{StaticResource FontSizeSM}"
+                                        TextColor="{StaticResource AppTextMuted}" />
+                                    <!-- Was a single "Masked ref saved" flag; now shows how many
+                                         variants (masked, spectacles, any combo) are registered,
+                                         since a worker isn't limited to one anymore. -->
+                                    <Border
+                                        IsVisible="{Binding HasVariants}"
+                                        Padding="6,2"
+                                        StrokeShape="RoundRectangle 10"
+                                        BackgroundColor="{StaticResource AppPrimaryBlue}"
+                                        HorizontalOptions="Start">
+                                        <Label Text="{Binding VariantSummary}" TextColor="White" FontSize="10" />
+                                    </Border>
+                                </VerticalStackLayout>
+
+                                <!-- Single "more options" icon — opens Edit/Delete menu -->
+                                <Button
+                                    Grid.Column="1"
+                                    Text="⋮"
+                                    FontSize="22"
+                                    WidthRequest="40"
+                                    HeightRequest="40"
+                                    Padding="0"
+                                    CornerRadius="20"
+                                    BackgroundColor="Transparent"
+                                    TextColor="{StaticResource AppTextPrimary}"
+                                    VerticalOptions="Center"
+                                    Clicked="OnMoreOptionsClicked"
+                                    CommandParameter="{Binding Id}" />
+
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+
+                <CollectionView.EmptyView>
+                    <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Spacing="8" Padding="40">
+                        <Label Text="" FontSize="40" HorizontalOptions="Center" />
+                        <Label Text="No workers enrolled yet" FontSize="{StaticResource FontSizeLG}" TextColor="{StaticResource AppTextMuted}" HorizontalOptions="Center" />
+                    </VerticalStackLayout>
+                </CollectionView.EmptyView>
+
+            </CollectionView>
+        </RefreshView>
+
+    </Grid>
+
+</ContentPage>

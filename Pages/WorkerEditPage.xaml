@@ -1,0 +1,158 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+             xmlns:syncfusion="http://schemas.syncfusion.com/maui/toolkit"
+             x:Class="FaceAttendanceApp.WorkerEditPage"
+             Title="Edit Worker">
+
+    <Grid>
+
+        <!-- Normal edit form -->
+        <ScrollView x:Name="EditFormView" IsVisible="True">
+            <VerticalStackLayout Padding="24" Spacing="20">
+
+                <Label Text="Worker Name" Style="{StaticResource AppSectionLabel}" />
+                <Entry
+                    x:Name="NameEntry"
+                    FontSize="18"
+                    Placeholder="Worker name" />
+
+                <syncfusion:SfButton
+                    Text="Save Name"
+                    Style="{StaticResource AppSuccessButton}"
+                    Clicked="OnSaveNameClicked" />
+
+                <BoxView HeightRequest="1" BackgroundColor="#DDDDDD" Margin="0,10" />
+
+                <Label Text="Primary Face Reference" Style="{StaticResource AppSectionLabel}" />
+                <syncfusion:SfButton
+                    Text="Recapture Face"
+                    Style="{StaticResource AppPrimaryButton}"
+                    Clicked="OnRecaptureFaceClicked" />
+
+                <BoxView HeightRequest="1" BackgroundColor="#DDDDDD" Margin="0,10" />
+
+                <Label Text="Additional Face Variants" Style="{StaticResource AppSectionLabel}" />
+                <Label
+                    Text="Register how this worker actually looks on site — with mask, with spectacles, or both — so scans match correctly no matter what they're wearing."
+                    FontSize="{StaticResource FontSizeSM}"
+                    TextColor="{StaticResource AppTextMuted}" />
+
+                <!-- One card per registered variant, with a delete button -->
+                <CollectionView x:Name="FaceReferencesList" ItemsSource="{Binding}">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate>
+                            <Border
+                                Padding="12"
+                                Margin="0,4"
+                                StrokeShape="RoundRectangle 10"
+                                BackgroundColor="{StaticResource AppSurfaceAlt}">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Label
+                                        Grid.Column="0"
+                                        Text="{Binding Label}"
+                                        FontSize="{StaticResource FontSizeMD}"
+                                        VerticalOptions="Center" />
+                                    <Button
+                                        Grid.Column="1"
+                                        Text="Delete"
+                                        TextColor="{StaticResource AppDangerRed}"
+                                        BackgroundColor="Transparent"
+                                        Clicked="OnDeleteFaceReferenceClicked"
+                                        CommandParameter="{Binding .}" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+
+                <Label
+                    x:Name="NoVariantsLabel"
+                    Text="No additional variants registered yet."
+                    FontSize="{StaticResource FontSizeSM}"
+                    TextColor="{StaticResource AppTextMuted}"
+                    IsVisible="False" />
+
+                <syncfusion:SfButton
+                    Text="Add Face Variant"
+                    Style="{StaticResource AppPrimaryButton}"
+                    Clicked="OnAddFaceVariantClicked" />
+
+                <syncfusion:SfButton
+                    Text="Back to Worker List"
+                    Style="{StaticResource AppSecondaryButton}"
+                    Clicked="OnBackClicked"
+                    Margin="0,20,0,0" />
+
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- Recapture camera view -->
+        <Grid x:Name="RecaptureView" IsVisible="False">
+            <toolkit:CameraView
+                x:Name="RecaptureCamera"
+                HorizontalOptions="Fill"
+                VerticalOptions="Fill"
+                MediaCaptured="RecaptureCamera_MediaCaptured" />
+
+            <Border
+                BackgroundColor="{StaticResource AppPrimaryBlue}"
+                HorizontalOptions="Fill"
+                VerticalOptions="Start"
+                Padding="16,12">
+                <Label
+                    x:Name="RecaptureBannerLabel"
+                    Text="Recapturing face"
+                    TextColor="White"
+                    FontAttributes="Bold"
+                    FontSize="{StaticResource FontSizeMD}"
+                    HorizontalOptions="Center" />
+            </Border>
+
+            <!-- Same camera-switch button placement/style as RegisterWorkerPage/ScanAttendancePage,
+                 for consistency across all three camera-capture screens. -->
+            <syncfusion:SfButton
+                x:Name="SwitchCameraBtn"
+                Text=">>"
+                Style="{StaticResource AppPrimaryButton}"
+                WidthRequest="50"
+                HeightRequest="50"
+                CornerRadius="25"
+                HorizontalOptions="End"
+                VerticalOptions="Start"
+                Margin="0,20,20,0"
+                Clicked="OnSwitchCameraClicked" />
+
+            <VerticalStackLayout
+                VerticalOptions="End"
+                Padding="0,0,0,30"
+                Spacing="10">
+
+                <Label
+                    x:Name="RecaptureStatusLabel"
+                    Text="Position face in frame"
+                    TextColor="White"
+                    HorizontalOptions="Center"
+                    FontSize="{StaticResource FontSizeMD}" />
+
+                <syncfusion:SfButton
+                    Text="Capture"
+                    Style="{StaticResource AppPrimaryButton}"
+                    Clicked="OnRecaptureCaptureClicked"
+                    HorizontalOptions="Center"
+                    WidthRequest="200" />
+
+                <syncfusion:SfButton
+                    Text="Cancel"
+                    Style="{StaticResource AppSecondaryButton}"
+                    Clicked="OnRecaptureCancelClicked"
+                    HorizontalOptions="Center"
+                    WidthRequest="200" />
+
+            </VerticalStackLayout>
+        </Grid>
+
+    </Grid>
+
+</ContentPage>

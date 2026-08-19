@@ -1,0 +1,50 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:syncfusion="http://schemas.syncfusion.com/maui/toolkit"
+             x:Class="FaceAttendanceApp.MainPage">
+
+    <VerticalStackLayout
+        VerticalOptions="Center"
+        HorizontalOptions="Center"
+        Spacing="20"
+        Padding="30">
+
+        <Label
+            Text="Face Attendance"
+            FontSize="28"
+            FontAttributes="Bold"
+            HorizontalOptions="Center"
+            Margin="0,0,0,20" />
+
+        <syncfusion:SfButton
+            x:Name="RegisterWorkerBtn"
+            Text="Register Worker"
+            Style="{StaticResource AppPrimaryButton}"
+            WidthRequest="280"
+            Clicked="OnRegisterWorkerClicked" />
+
+        <syncfusion:SfButton
+            x:Name="ScanAttendanceBtn"
+            Text="Scan Attendance"
+            Style="{StaticResource AppPrimaryButton}"
+            WidthRequest="280"
+            Clicked="OnScanAttendanceClicked" />
+
+        <syncfusion:SfButton
+            x:Name="ListWorkersBtn"
+            Text="Worker List"
+            Style="{StaticResource AppPrimaryButton}"
+            WidthRequest="280"
+            Clicked="OnListWorkersClicked" />
+
+        <syncfusion:SfButton
+            x:Name="AttendanceHistoryBtn"
+            Text="Attendance History"
+            Style="{StaticResource AppPrimaryButton}"
+            WidthRequest="280"
+            Clicked="OnAttendanceHistoryClicked" />
+
+    </VerticalStackLayout>
+
+</ContentPage>

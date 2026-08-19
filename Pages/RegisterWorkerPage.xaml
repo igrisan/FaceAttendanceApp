@@ -1,0 +1,132 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+             xmlns:syncfusion="http://schemas.syncfusion.com/maui/toolkit"
+             x:Class="FaceAttendanceApp.RegisterWorkerPage"
+             Title="Register Worker">
+
+    <Grid>
+        <toolkit:CameraView
+            x:Name="MainCamera"
+            HorizontalOptions="Fill"
+            VerticalOptions="Fill"
+            MediaCaptured="MainCamera_MediaCaptured" />
+
+        <Image
+            x:Name="ResultImage"
+            IsVisible="False"
+            Aspect="AspectFit"
+            HorizontalOptions="Fill"
+            VerticalOptions="Fill" />
+
+        <Grid
+            x:Name="LoadingOverlay"
+            IsVisible="True"
+            BackgroundColor="{StaticResource AppOverlayDark}"
+            HorizontalOptions="Fill"
+            VerticalOptions="Fill">
+            <VerticalStackLayout
+                VerticalOptions="Center"
+                HorizontalOptions="Center"
+                Spacing="16">
+                <ActivityIndicator
+                    x:Name="LoadingSpinner"
+                    IsRunning="True"
+                    Color="White"
+                    WidthRequest="50"
+                    HeightRequest="50" />
+                <Label
+                    x:Name="LoadingLabel"
+                    Text="Preparing camera..."
+                    TextColor="White"
+                    FontSize="{StaticResource FontSizeLG}"
+                    HorizontalOptions="Center" />
+            </VerticalStackLayout>
+        </Grid>
+
+        <Border
+            x:Name="MaskedModeBanner"
+            IsVisible="False"
+            BackgroundColor="{StaticResource AppPrimaryBlue}"
+            HorizontalOptions="Fill"
+            VerticalOptions="Start"
+            Padding="16,12">
+            <HorizontalStackLayout HorizontalOptions="Center" Spacing="8">
+                <Label Text="😷" FontSize="18" />
+                <Label
+                    x:Name="MaskedModeLabel"
+                    Text="Capturing masked reference"
+                    TextColor="White"
+                    FontAttributes="Bold"
+                    FontSize="{StaticResource FontSizeMD}" />
+            </HorizontalStackLayout>
+        </Border>
+
+        <syncfusion:SfButton
+            x:Name="SwitchCameraBtn"
+            Text=">>"
+            Style="{StaticResource AppPrimaryButton}"
+            WidthRequest="50"
+            HeightRequest="50"
+            CornerRadius="25"
+            HorizontalOptions="End"
+            VerticalOptions="Start"
+            Margin="0,20,20,0"
+            Clicked="OnSwitchCameraClicked" />
+
+        <Entry
+            x:Name="WorkerNameEntry"
+            Placeholder="Enter worker name"
+            IsVisible="False"
+            BackgroundColor="White"
+            TextColor="Black"
+            HorizontalOptions="Center"
+            VerticalOptions="End"
+            Margin="20,0,20,190"
+            WidthRequest="300" />
+
+        <syncfusion:SfButton
+            x:Name="EnrollBtn"
+            Text="Enroll Worker"
+            Style="{StaticResource AppSuccessButton}"
+            IsVisible="False"
+            Clicked="OnEnrollClicked"
+            HorizontalOptions="Center"
+            VerticalOptions="End"
+            Margin="0,0,0,140"
+            WidthRequest="200" />
+
+        <VerticalStackLayout
+            VerticalOptions="End"
+            Padding="0,0,0,30"
+            Spacing="10">
+
+            <Label
+                x:Name="StatusLabel"
+                Text="Camera loading..."
+                TextColor="White"
+                HorizontalOptions="Center"
+                FontSize="{StaticResource FontSizeMD}" />
+
+            <syncfusion:SfButton
+                x:Name="CaptureBtn"
+                Text="Capture Frame"
+                Style="{StaticResource AppPrimaryButton}"
+                Clicked="OnCaptureClicked"
+                HorizontalOptions="Center"
+                WidthRequest="200" />
+
+            <syncfusion:SfButton
+                x:Name="RetakeBtn"
+                Text="Retake"
+                Style="{StaticResource AppSecondaryButton}"
+                IsVisible="False"
+                Clicked="OnRetakeClicked"
+                HorizontalOptions="Center"
+                WidthRequest="200" />
+
+        </VerticalStackLayout>
+    </Grid>
+
+</ContentPage>
