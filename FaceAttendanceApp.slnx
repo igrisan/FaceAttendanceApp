@@ -1,3 +1,5 @@
 <Solution>
-  <Project Path="FaceAttendanceApp.csproj" />
+  <Project Path="FaceAttendanceApp.csproj">
+    <Deploy Solution="Debug|*" />
+  </Project>
 </Solution>
