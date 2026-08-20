@@ -13,6 +13,9 @@ namespace FaceAttendanceApp
             Routing.RegisterRoute(nameof(AttendanceHistoryPage), typeof(AttendanceHistoryPage));
             Routing.RegisterRoute(nameof(WorkerListPage), typeof(WorkerListPage));
             Routing.RegisterRoute(nameof(WorkerEditPage), typeof(WorkerEditPage));
+#if DEBUG
+            Routing.RegisterRoute(nameof(SeedTestDataPage), typeof(SeedTestDataPage));
+#endif
         }
     }
 }

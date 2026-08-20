@@ -29,5 +29,14 @@ namespace FaceAttendanceApp
         {
             await Shell.Current.GoToAsync(nameof(AttendanceHistoryPage));
         }
+
+        private async void OnSeedTestDataClicked(object? sender, EventArgs e)
+        {
+#if DEBUG
+            await Shell.Current.GoToAsync(nameof(SeedTestDataPage));
+#else
+    Debug.WriteLine("[MainPage] Seed test data blocked — not a debug build");
+#endif
+        }
     }
 }

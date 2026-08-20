@@ -121,6 +121,20 @@ namespace FaceAttendanceApp.Model
             return worker.Id;
         }
 
+        /// <summary>
+        /// Bulk-inserts many workers in a single transaction. Used by TestDataSeeder for
+        /// scale testing — inserting thousands of rows one-by-one via SaveWorkerAsync would
+        /// itself take long enough to skew the timing numbers you're trying to measure.
+        /// </summary>
+        public Task RunBulkInsertAsync(List<Worker> workers)
+        {
+            foreach (var w in workers)
+            {
+                w.EnrolledAtUtc = DateTime.UtcNow;
+            }
+            return _connection.RunInTransactionAsync(tran => tran.InsertAll(workers));
+        }
+
         public Task<int> UpdateWorkerAsync(Worker worker)
         {
             worker.InvalidateEmbeddingCache();

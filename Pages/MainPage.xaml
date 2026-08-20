@@ -45,6 +45,13 @@
             WidthRequest="280"
             Clicked="OnAttendanceHistoryClicked" />
 
+        <syncfusion:SfButton
+    x:Name="SeedTestDataBtn"
+    Text="🧪 Dev: Seed Test Data"
+    Style="{StaticResource AppPrimaryButton}"
+    WidthRequest="280"
+    Clicked="OnSeedTestDataClicked" />
+
     </VerticalStackLayout>
 
 </ContentPage>
