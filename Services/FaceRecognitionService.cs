@@ -5,6 +5,7 @@ using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using SkiaSharp;
 using FaceAttendanceApp.Model;
+using FaceAttendanceApp.Helpers;
 
 namespace FaceAttendanceApp.Services
 {
@@ -107,6 +108,16 @@ namespace FaceAttendanceApp.Services
 
             try
             {
+                // Normalize lighting on the aligned face BEFORE computing the embedding. Without
+                // this, an indoor-enrolled reference and an outdoor/high-brightness scan capture
+                // feed the model raw pixel values from very different brightness/contrast
+                // distributions, which lowers cosine similarity even for a correct match — this
+                // is the root cause of "score is fine indoor, drops outdoor" behavior. Reuses the
+                // same ImageQualityHelper.NormalizeLighting already proven in LivenessService's
+                // anti-spoof preprocessing (percentile-stretch contrast), just applied here to
+                // the 112x112 aligned crop instead of the 80x80 liveness crop.
+                using var normalized = ImageQualityHelper.NormalizeLighting(alignedFace);
+
                 // FAST PATH: direct byte-buffer copy into the tensor's backing buffer, same
                 // technique used in FaceDetectionService/MaskHelmetDetectionService, instead of
                 // calling alignedFace.GetPixel(x, y) + tensor[0,c,y,x] per pixel (12,544 slow
@@ -114,10 +125,10 @@ namespace FaceAttendanceApp.Services
                 // the whole pipeline (254-456ms out of ~1s+ total frame time).
                 var tensor = new DenseTensor<float>(new[] { 1, 3, EmbedInputSize, EmbedInputSize });
 
-                int byteCount = alignedFace.ByteCount;
+                int byteCount = normalized.ByteCount;
                 byte[] pixelBytes = new byte[byteCount];
-                Marshal.Copy(alignedFace.GetPixels(), pixelBytes, 0, byteCount);
-                int rowBytes = alignedFace.RowBytes;
+                Marshal.Copy(normalized.GetPixels(), pixelBytes, 0, byteCount);
+                int rowBytes = normalized.RowBytes;
 
                 var tensorSpan = tensor.Buffer.Span;
                 int planeSize = EmbedInputSize * EmbedInputSize;

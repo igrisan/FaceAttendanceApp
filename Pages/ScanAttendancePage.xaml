@@ -124,6 +124,18 @@
             </Grid>
         </Border>
 
+        <!-- Start / Stop scan buttons occupy the same spot; only one is visible at a time -->
+        <syncfusion:SfButton
+            x:Name="StartScanBtn"
+            Text="Start Scan"
+            Style="{StaticResource AppPrimaryButton}"
+            Clicked="OnStartScanClicked"
+            HorizontalOptions="Center"
+            VerticalOptions="End"
+            Margin="0,0,0,30"
+            WidthRequest="180"
+            IsVisible="True" />
+
         <syncfusion:SfButton
             x:Name="StopScanBtn"
             Text="Stop Scanning"
@@ -132,7 +144,8 @@
             HorizontalOptions="Center"
             VerticalOptions="End"
             Margin="0,0,0,30"
-            WidthRequest="180" />
+            WidthRequest="180"
+            IsVisible="False" />
 
     </Grid>
 

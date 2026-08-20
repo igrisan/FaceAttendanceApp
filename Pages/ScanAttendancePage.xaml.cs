@@ -3,6 +3,7 @@ using System.Diagnostics;
 using SkiaSharp;
 using FaceAttendanceApp.Services;
 using FaceAttendanceApp.Model;
+using FaceAttendanceApp.Helpers;
 
 namespace FaceAttendanceApp
 {
@@ -55,6 +56,18 @@ namespace FaceAttendanceApp
 
         private bool _isScanning = false;
         private bool _isBusy = false;
+
+        // Set the instant we start tearing the page down (back button, navigation, etc).
+        // Every entry point that could touch the CameraView or fire a late native callback
+        // checks this first, so nothing runs against a CameraView that's about to be disposed.
+        private volatile bool _isNavigatingAway = false;
+
+        // How long we'll wait for an in-flight CaptureImage()/MediaCaptured callback to settle
+        // before we let navigation actually pop the page. This is the core fix for the
+        // "Unable to activate instance of type CommunityToolkit.Maui.Core.CameraManager+ImageCallBack
+        // from native handle ..." crash — that crash happens when the page (and its CameraView)
+        // gets disposed while a capture callback is still queued on the native/Java side.
+        private static readonly TimeSpan CaptureDrainTimeout = TimeSpan.FromSeconds(2);
 
         private static readonly TimeSpan ResultDisplayDelay = TimeSpan.FromSeconds(5);
 
@@ -127,13 +140,26 @@ namespace FaceAttendanceApp
         {
             base.OnAppearing();
 
+            // A page instance can in theory be re-shown after being torn down once (e.g. cached
+            // in a nav stack) — reset the flag so it's usable again.
+            _isNavigatingAway = false;
+
             ApplySquarePreviewBounds();
+
+            // Scan does not start automatically — show the ready state and wait for the user
+            // to tap "Start Scan". Everything below (permissions, DB init, model loading, camera
+            // enumeration) still happens eagerly so the page is warmed up and ready to go the
+            // instant Start is tapped.
+            StartScanBtn.IsVisible = true;
+            StopScanBtn.IsVisible = false;
+            ScanStateLabel.Text = "Preparing...";
 
             var status = await Permissions.RequestAsync<Permissions.Camera>();
 
             if (status != PermissionStatus.Granted)
             {
                 ScanStateLabel.Text = "Camera permission denied";
+                StartScanBtn.IsVisible = false;
                 return;
             }
 
@@ -174,11 +200,8 @@ namespace FaceAttendanceApp
 
             ApplySquarePreviewBounds();
 
-            ScanStateLabel.Text = "Scanning...";
-            _isScanning = true;
-            StartScanPulse();
-
-            await CaptureNextFrame();
+            // Ready and waiting for the user to tap Start Scan.
+            ScanStateLabel.Text = "Ready to scan";
         }
 
         private void ApplyCaptureResolution()
@@ -227,11 +250,61 @@ namespace FaceAttendanceApp
             await RefreshWorkerCacheAsync();
         }
 
-        private async void OnSwitchCameraClicked(object? sender, EventArgs e)
+        /// <summary>
+        /// Starts the scan loop. No-ops if already scanning or if the camera isn't ready yet
+        /// (e.g. permissions/model loading still in progress in OnAppearing).
+        /// </summary>
+        private async void OnStartScanClicked(object? sender, EventArgs e)
         {
+            if (_isNavigatingAway)
+            {
+                return;
+            }
+
+            if (_isScanning)
+            {
+                Debug.WriteLine("[ScanAttendancePage] Start ignored — already scanning");
+                return;
+            }
+
             if (!_cameraReady)
             {
-                Debug.WriteLine("[ScanAttendancePage] Switch ignored — camera not ready yet");
+                Debug.WriteLine("[ScanAttendancePage] Start ignored — camera not ready yet");
+                ScanStateLabel.Text = "Still preparing, try again shortly...";
+                return;
+            }
+
+            StartScanBtn.IsVisible = false;
+            StopScanBtn.IsVisible = true;
+
+            ScanStateLabel.Text = "Scanning...";
+            _isScanning = true;
+            StartScanPulse();
+
+            await CaptureNextFrame();
+        }
+
+        /// <summary>
+        /// Stops the scan loop in place (stays on this page, ready to Start again), instead of
+        /// navigating back.
+        /// </summary>
+        private void OnStopScanClicked(object? sender, EventArgs e)
+        {
+            _isScanning = false;
+            _overlayHideCts?.Cancel();
+
+            OverlayImage.IsVisible = false;
+            ScanStateLabel.Text = "Ready to scan";
+
+            StopScanBtn.IsVisible = false;
+            StartScanBtn.IsVisible = true;
+        }
+
+        private async void OnSwitchCameraClicked(object? sender, EventArgs e)
+        {
+            if (_isNavigatingAway || !_cameraReady)
+            {
+                Debug.WriteLine("[ScanAttendancePage] Switch ignored — camera not ready yet or page leaving");
                 return;
             }
 
@@ -253,28 +326,105 @@ namespace FaceAttendanceApp
             }
 
             await Task.Delay(800);
-            _cameraReady = true;
+            if (!_isNavigatingAway)
+            {
+                _cameraReady = true;
+            }
+        }
+
+        /// <summary>
+        /// THE FIX for the "Unable to activate instance of type
+        /// CommunityToolkit.Maui.Core.CameraManager+ImageCallBack from native handle ..." crash.
+        ///
+        /// That crash happens when the hardware back button/gesture pops this page (disposing
+        /// MainCamera and its underlying Java ImageCallBack) while a CaptureImage() call is
+        /// still in flight on the native side. When the queued native callback later fires, Mono
+        /// tries to re-activate a managed peer for a Java object whose C# side no longer exists,
+        /// and blows up with MissingMethodException/NotSupportedException.
+        ///
+        /// Fix: intercept the back button ourselves, stop the scan loop immediately, and wait
+        /// (with a timeout safety net) for any in-flight capture to actually finish before we
+        /// let navigation proceed and the CameraView gets disposed.
+        /// </summary>
+        protected override bool OnBackButtonPressed()
+        {
+            if (_isNavigatingAway)
+            {
+                // Already tearing down — swallow any repeat back presses.
+                return true;
+            }
+
+            _ = SafeStopAndNavigateBackAsync();
+            return true; // we handle navigation ourselves
+        }
+
+        private async Task SafeStopAndNavigateBackAsync()
+        {
+            _isNavigatingAway = true;
+            _isScanning = false;
+            _cameraReady = false;
+            _overlayHideCts?.Cancel();
+
+            StopScanBtn.IsVisible = false;
+            StartScanBtn.IsVisible = false;
+            ScanStateLabel.Text = "Stopping...";
+
+            // Give any in-flight CaptureImage() / pending MediaCaptured callback a chance to
+            // finish before we tear down the page and dispose the CameraView. This is what
+            // actually prevents the native ImageCallBack peer from being collected mid-callback.
+            var sw = Stopwatch.StartNew();
+            while (_isBusy && sw.Elapsed < CaptureDrainTimeout)
+            {
+                await Task.Delay(50);
+            }
+
+            if (_isBusy)
+            {
+                Debug.WriteLine("[ScanAttendancePage] Capture drain TIMED OUT — proceeding with navigation anyway");
+            }
+            else
+            {
+                Debug.WriteLine($"[ScanAttendancePage] Capture drained cleanly in {sw.ElapsedMilliseconds} ms — safe to navigate back");
+            }
+
+            // Unhook now, before disposal, so any last-moment native callback that still lands
+            // finds nothing to invoke into.
+            MainCamera.MediaCaptured -= MainCamera_MediaCaptured;
+
+            try
+            {
+                if (Shell.Current is not null)
+                {
+                    await Shell.Current.GoToAsync("..");
+                }
+                else
+                {
+                    await Navigation.PopAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ScanAttendancePage] Navigation back FAILED: {ex}");
+            }
         }
 
         protected override void OnDisappearing()
         {
             base.OnDisappearing();
+            _isNavigatingAway = true;
             _isScanning = false;
             _cameraReady = false;
             _overlayHideCts?.Cancel();
-        }
 
-        private async void OnStopScanClicked(object? sender, EventArgs e)
-        {
-            _isScanning = false;
-            _overlayHideCts?.Cancel();
-            ScanStateLabel.Text = "Scanning stopped";
-            await Shell.Current.GoToAsync("..");
+            // Unhook defensively even if OnDisappearing was reached via a path other than
+            // OnBackButtonPressed (e.g. a different nav trigger), so a late native callback
+            // can't invoke into a handler on a dying page.
+            MainCamera.MediaCaptured -= MainCamera_MediaCaptured;
         }
 
         private async Task CaptureNextFrame()
         {
-            if (!_isScanning || _isBusy)
+            if (_isNavigatingAway || !_isScanning || _isBusy)
             {
                 return;
             }
@@ -284,12 +434,28 @@ namespace FaceAttendanceApp
                 _isBusy = true;
                 await MainCamera.CaptureImage(CancellationToken.None);
             }
+#if ANDROID
+            catch (Java.Lang.Exception jex)
+            {
+                // Native peer was torn down mid-capture (e.g. page navigated away). Safe to
+                // swallow — we're not going to retry into a dead CameraView.
+                Debug.WriteLine($"[ScanAttendancePage] Capture Java exception (likely teardown race): {jex}");
+                _isBusy = false;
+            }
+#endif
+            catch (MissingMethodException mmex)
+            {
+                // JNI peer for ImageCallBack was collected during navigation — same teardown
+                // race, just surfaced as a managed exception instead. Swallow rather than crash.
+                Debug.WriteLine($"[ScanAttendancePage] Capture MissingMethodException (JNI peer collected): {mmex}");
+                _isBusy = false;
+            }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[ScanAttendancePage] Capture EXCEPTION: {ex}");
                 _isBusy = false;
 
-                if (_isScanning)
+                if (!_isNavigatingAway && _isScanning)
                 {
                     await Task.Delay(500);
                     await CaptureNextFrame();
@@ -299,6 +465,14 @@ namespace FaceAttendanceApp
 
         private async void MainCamera_MediaCaptured(object sender, MediaCapturedEventArgs e)
         {
+            // Page is tearing down or scan was stopped — ignore a late-arriving callback rather
+            // than touching a CameraView/UI that may already be gone.
+            if (_isNavigatingAway || !_isScanning)
+            {
+                _isBusy = false;
+                return;
+            }
+
             try
             {
                 using var memoryStream = new MemoryStream();
@@ -314,7 +488,7 @@ namespace FaceAttendanceApp
 
             _isBusy = false;
 
-            if (_isScanning)
+            if (!_isNavigatingAway && _isScanning)
             {
                 // No artificial delay here — next capture starts immediately after detection
                 // + overlay is drawn (see RunInferenceAsync: the box now goes up BEFORE the
@@ -325,6 +499,11 @@ namespace FaceAttendanceApp
 
         private async Task RunInferenceAsync(Stream imageStream)
         {
+            if (_isNavigatingAway)
+            {
+                return;
+            }
+
             if (!_detectionService.IsLoaded)
             {
                 Debug.WriteLine("[ScanAttendancePage] Inference skipped — detection model not loaded yet");
@@ -379,10 +558,13 @@ namespace FaceAttendanceApp
                 stageSw.Stop();
                 Debug.WriteLine($"[Timing] Face detection: {stageSw.ElapsedMilliseconds} ms — faces found: {faces.Count}");
 
+                if (_isNavigatingAway) return;
+
                 if (faces.Count == 0)
                 {
                     MainThread.BeginInvokeOnMainThread(() =>
                     {
+                        if (_isNavigatingAway) return;
                         _overlayHideCts?.Cancel();
                         OverlayImage.IsVisible = false;
                         UpdateResultCard(new List<(FaceDetection, string)>());
@@ -404,6 +586,44 @@ namespace FaceAttendanceApp
 
                 foreach (var face in faces)
                 {
+                    if (_isNavigatingAway) return;
+
+                    // Blur gate: crop just the face region and check sharpness BEFORE running
+                    // liveness/recognition on it. Low-light frames need longer sensor exposure
+                    // (more motion blur even for a stationary person) and harsh outdoor glare
+                    // can cause focus hunting — both produce a blurry face crop that would
+                    // otherwise feed straight into liveness/SFace and come back with a shaky,
+                    // artificially low score instead of no score at all. Uses the existing
+                    // ImageQualityHelper.ComputeBlurVariance (Laplacian-variance blur detector)
+                    // that was already written but not wired in anywhere yet.
+                    int fx1 = (int)Math.Clamp(face.X1, 0, originalForSize.Width - 1);
+                    int fy1 = (int)Math.Clamp(face.Y1, 0, originalForSize.Height - 1);
+                    int fx2 = (int)Math.Clamp(face.X2, fx1 + 1, originalForSize.Width);
+                    int fy2 = (int)Math.Clamp(face.Y2, fy1 + 1, originalForSize.Height);
+
+                    stageSw.Restart();
+                    bool sharpEnough;
+                    double blurVariance;
+                    using (var faceCropForBlur = new SKBitmap(fx2 - fx1, fy2 - fy1))
+                    {
+                        using (var c = new SKCanvas(faceCropForBlur))
+                        {
+                            c.DrawBitmap(originalForSize,
+                                new SKRectI(fx1, fy1, fx2, fy2),
+                                new SKRect(0, 0, fx2 - fx1, fy2 - fy1));
+                        }
+                        sharpEnough = ImageQualityHelper.IsSharpEnough(faceCropForBlur, out blurVariance);
+                    }
+                    stageSw.Stop();
+                    Debug.WriteLine($"[Timing] Blur check: {stageSw.ElapsedMilliseconds} ms — variance={blurVariance:F1}, sharpEnough={sharpEnough}");
+
+                    if (!sharpEnough)
+                    {
+                        Debug.WriteLine($"[ScanAttendancePage] Frame REJECTED — too blurry (variance={blurVariance:F1} < {ImageQualityHelper.BlurVarianceThreshold})");
+                        displayResults.Add((face, "Blurry — hold still"));
+                        continue;
+                    }
+
                     stageSw.Restart();
                     var (isLive, liveConfidence) = _livenessService.CheckLiveness(originalForSize, face);
                     stageSw.Stop();
@@ -478,6 +698,8 @@ namespace FaceAttendanceApp
 
                     displayResults.Add((face, label));
                 }
+
+                if (_isNavigatingAway) return;
 
                 // ---- Final pass: replace the "Processing..." boxes with the real labels.
                 // The box position itself doesn't move (same frame, same coordinates) — only
@@ -566,6 +788,8 @@ namespace FaceAttendanceApp
         private void ShowOverlay(SKBitmap original, List<(FaceDetection face, string label)> results,
             (int Width, int Height) TargetCaptureResolution)
         {
+            if (_isNavigatingAway) return;
+
             using var surface = SKSurface.Create(new SKImageInfo(original.Width, original.Height));
             var canvas = surface.Canvas;
             canvas.Clear(SKColors.Transparent);
@@ -581,8 +805,10 @@ namespace FaceAttendanceApp
             {
                 bool isSpoof = label.Contains("SPOOF");
                 bool isPlaceholder = label == "Processing...";
+                bool isBlurry = label.Contains("Blurry");
 
                 var color = isSpoof ? SKColors.Red
+                          : isBlurry ? SKColors.Orange
                           : isPlaceholder ? SKColors.Gray
                           : SKColors.LimeGreen;
 
@@ -618,6 +844,8 @@ namespace FaceAttendanceApp
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
+                if (_isNavigatingAway) return;
+
                 OverlayImage.Source = ImageSource.FromStream(() => new MemoryStream(bytes));
                 OverlayImage.IsVisible = true;
 
@@ -634,6 +862,8 @@ namespace FaceAttendanceApp
 
         private void ScheduleOverlayHide()
         {
+            if (_isNavigatingAway) return;
+
             _overlayHideCts?.Cancel();
             var cts = new CancellationTokenSource();
             _overlayHideCts = cts;
@@ -651,10 +881,12 @@ namespace FaceAttendanceApp
                 return;
             }
 
-            if (token.IsCancellationRequested) return;
+            if (token.IsCancellationRequested || _isNavigatingAway) return;
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
+                if (_isNavigatingAway) return;
+
                 OverlayImage.IsVisible = false;
                 if (_isScanning)
                 {
@@ -665,6 +897,8 @@ namespace FaceAttendanceApp
 
         private void UpdateResultCard(List<(FaceDetection face, string label)> results)
         {
+            if (_isNavigatingAway) return;
+
             if (results.Count == 0)
             {
                 ResultIcon.Text = "👤";
@@ -677,17 +911,21 @@ namespace FaceAttendanceApp
             }
 
             var spoofMatch = results.FirstOrDefault(r => r.label.Contains("SPOOF"));
-            var namedMatch = results.FirstOrDefault(r => !r.label.StartsWith("Unknown") && !r.label.Contains("SPOOF"));
+            var blurryMatch = results.FirstOrDefault(r => r.label.Contains("Blurry"));
+            var namedMatch = results.FirstOrDefault(r => !r.label.StartsWith("Unknown") && !r.label.Contains("SPOOF") && !r.label.Contains("Blurry"));
 
             (FaceDetection face, string label) chosen;
             if (spoofMatch.label != null)
                 chosen = spoofMatch;
             else if (namedMatch.label != null)
                 chosen = namedMatch;
+            else if (blurryMatch.label != null)
+                chosen = blurryMatch;
             else
                 chosen = results[0];
 
             bool isSpoof = chosen.label.Contains("SPOOF");
+            bool isBlurry = chosen.label.Contains("Blurry");
             bool isUnknown = chosen.label.StartsWith("Unknown");
             bool hasHelmet = chosen.label.Contains("[Helmet]");
             bool hasMask = chosen.label.Contains("[Mask]");
@@ -704,6 +942,12 @@ namespace FaceAttendanceApp
             {
                 ResultIcon.Text = "⚠";
                 ResultNameLabel.Text = "Spoof attempt blocked";
+                ResultScoreLabel.Text = "";
+            }
+            else if (isBlurry)
+            {
+                ResultIcon.Text = "📷";
+                ResultNameLabel.Text = "Too blurry — hold still";
                 ResultScoreLabel.Text = "";
             }
             else if (isUnknown)

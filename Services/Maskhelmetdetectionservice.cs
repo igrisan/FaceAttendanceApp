@@ -6,7 +6,12 @@ using SkiaSharp;
 
 namespace FaceAttendanceApp.Services
 {
-    public record PpeDetection(float X1, float Y1, float X2, float Y2, float Confidence, int ClassId, string ClassName);
+    // Confidence = objectness * classScore (standard YOLOX decode; used for NMS ranking and for
+    // goggles/eyeglasses, which decode reliably this way).
+    // ClassScore = the raw per-class sigmoid score alone, with no objectness multiplied in. Used
+    // for mask/helmet instead, because objectness is unreliable at the anchors those classes land
+    // on for this exported model (see CheckHelmetAndMask for the full explanation).
+    public record PpeDetection(float X1, float Y1, float X2, float Y2, float Confidence, float ClassScore, int ClassId, string ClassName);
 
     public class MaskHelmetDetectionService
     {
@@ -77,26 +82,36 @@ namespace FaceAttendanceApp.Services
         private const float CropPaddingTop = 0.6f;
         private const float CropPaddingBottom = 0.2f;
 
+        // Standard YOLOX decoding scores a detection as objectness * classScore. That works fine
+        // for goggles/eyeglasses in this model, but diagnostic logging showed it badly
+        // under-reports mask AND helmet: raw class scores of 0.75-0.85 (mask genuinely visible)
+        // were collapsing to combined confidences as low as 0.16, because objectness is
+        // miscalibrated at the grid anchors those two classes land on (likely because mask/helmet
+        // sit near the top/bottom edge of the padded face crop, a region this export wasn't
+        // confidently trained on for "is there anything here at all"). The class-score branch
+        // itself is reliable — it's specifically the objectness multiplier that's broken for
+        // these two classes — so mask/helmet are decided on ClassScore alone, while
+        // goggles/eyeglasses keep using the combined Confidence that already works for them.
         public (bool hasHelmet, bool hasMask) CheckHelmetAndMask(SKBitmap original, float faceX1, float faceY1, float faceX2, float faceY2)
         {
             using var faceCrop = CropWithPadding(original, faceX1, faceY1, faceX2, faceY2);
 
             var detections = Detect(faceCrop, RawDetectionThreshold);
 
-            var bestMask = detections.Where(d => d.ClassId == MaskClassId).OrderByDescending(d => d.Confidence).FirstOrDefault();
-            var bestHelmet = detections.Where(d => d.ClassId == HelmetClassId).OrderByDescending(d => d.Confidence).FirstOrDefault();
-            Debug.WriteLine($"[MaskHelmetDetectionService] Best kept mask candidate: {(bestMask == null ? "none" : $"confidence={bestMask.Confidence:F3}")} (threshold={MaskThreshold}); best helmet candidate: {(bestHelmet == null ? "none" : $"confidence={bestHelmet.Confidence:F3}")} (threshold={HelmetThreshold})");
+            var bestMask = detections.Where(d => d.ClassId == MaskClassId).OrderByDescending(d => d.ClassScore).FirstOrDefault();
+            var bestHelmet = detections.Where(d => d.ClassId == HelmetClassId).OrderByDescending(d => d.ClassScore).FirstOrDefault();
+            Debug.WriteLine($"[MaskHelmetDetectionService] Best kept mask candidate: {(bestMask == null ? "none" : $"classScore={bestMask.ClassScore:F3}")} (threshold={MaskThreshold}); best helmet candidate: {(bestHelmet == null ? "none" : $"classScore={bestHelmet.ClassScore:F3}")} (threshold={HelmetThreshold})");
 
-            bool hasHelmet = bestHelmet != null && bestHelmet.Confidence >= HelmetThreshold;
-            bool hasMask = bestMask != null && bestMask.Confidence >= MaskThreshold;
+            bool hasHelmet = bestHelmet != null && bestHelmet.ClassScore >= HelmetThreshold;
+            bool hasMask = bestMask != null && bestMask.ClassScore >= MaskThreshold;
             return (hasHelmet, hasMask);
         }
 
         public (bool hasHelmet, bool hasMask) CheckHelmetAndMask(SKBitmap original)
         {
             var detections = Detect(original, RawDetectionThreshold);
-            bool hasHelmet = detections.Any(d => d.ClassId == HelmetClassId && d.Confidence >= HelmetThreshold);
-            bool hasMask = detections.Any(d => d.ClassId == MaskClassId && d.Confidence >= MaskThreshold);
+            bool hasHelmet = detections.Any(d => d.ClassId == HelmetClassId && d.ClassScore >= HelmetThreshold);
+            bool hasMask = detections.Any(d => d.ClassId == MaskClassId && d.ClassScore >= MaskThreshold);
             return (hasHelmet, hasMask);
         }
 
@@ -250,10 +265,18 @@ namespace FaceAttendanceApp.Services
                     if (clsScore > maxScorePerClass[c]) maxScorePerClass[c] = clsScore;
 
                     float finalScore = objectness * clsScore;
-                    if (finalScore < confThreshold)
+
+                    // Gate on EITHER the combined (objectness*classScore) score or the raw
+                    // classScore alone. Mask/helmet rely on ClassScore downstream (see
+                    // CheckHelmetAndMask) because objectness collapses their combined score to
+                    // near-zero even for genuine detections — if we only gated on finalScore
+                    // here, those candidates would be discarded before ClassScore ever gets
+                    // checked, which is exactly what was happening before this fix (mask
+                    // candidates disappearing entirely instead of showing a low score).
+                    if (finalScore < confThreshold && clsScore < confThreshold)
                         continue;
 
-                    candidates.Add(new PpeDetection(x1, y1, x2, y2, finalScore, c, ClassNames[c]));
+                    candidates.Add(new PpeDetection(x1, y1, x2, y2, finalScore, clsScore, c, ClassNames[c]));
                 }
             }
 
@@ -270,7 +293,7 @@ namespace FaceAttendanceApp.Services
                 float x2 = Math.Clamp(det.X2 / scale, 0, originalWidth);
                 float y2 = Math.Clamp(det.Y2 / scale, 0, originalHeight);
 
-                mapped.Add(new PpeDetection(x1, y1, x2, y2, det.Confidence, det.ClassId, det.ClassName));
+                mapped.Add(new PpeDetection(x1, y1, x2, y2, det.Confidence, det.ClassScore, det.ClassId, det.ClassName));
             }
 
             return mapped;
@@ -282,7 +305,7 @@ namespace FaceAttendanceApp.Services
 
             foreach (var group in boxes.GroupBy(b => b.ClassId))
             {
-                var sorted = group.OrderByDescending(b => b.Confidence).ToList();
+                var sorted = group.OrderByDescending(b => b.ClassScore).ToList();
 
                 while (sorted.Count > 0)
                 {
