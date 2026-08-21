@@ -9,10 +9,10 @@ namespace FaceAttendanceApp
 {
     public partial class ScanAttendancePage : ContentPage
     {
-        private readonly FaceDetectionService _detectionService = new();
-        private readonly FaceRecognitionService _recognitionService = new();
-        private readonly LivenessService _livenessService = new();
-        private readonly MaskHelmetDetectionService _ppeService = new();
+        private readonly FaceDetectionService _detectionService;
+        private readonly FaceRecognitionService _recognitionService;
+        private readonly LivenessService _livenessService;
+        private readonly MaskHelmetDetectionService _ppeService;
 
         private WorkerDatabase? _database;
         private AttendanceDatabase? _attendanceDatabase;
@@ -83,9 +83,13 @@ namespace FaceAttendanceApp
         private double _previewWidth;
         private double _previewHeight;
 
-        public ScanAttendancePage()
+        public ScanAttendancePage(FaceDetectionService detectionService, FaceRecognitionService recognitionService, LivenessService livenessService, MaskHelmetDetectionService ppeService)
         {
             InitializeComponent();
+            _detectionService = detectionService;
+            _recognitionService = recognitionService;
+            _livenessService = livenessService;
+            _ppeService = ppeService;
 
             // Recompute the square preview box whenever the page/root grid resizes (rotation,
             // window resize, etc.), and keep _previewWidth/_previewHeight in sync with it.
@@ -173,10 +177,28 @@ namespace FaceAttendanceApp
 
             ScanStateLabel.Text = "Loading models...";
 
-            await Task.Run(_detectionService.LoadModel);
-            await Task.Run(_recognitionService.LoadModel);
-            await Task.Run(_livenessService.LoadModel);
-            await Task.Run(_ppeService.LoadModel);
+            // Only load models the FIRST time — since services are registered as singletons in
+            // MauiProgram.cs, IsLoaded stays true across page visits, so this skips reloading
+            // from disk (and re-initializing each ONNX session) on subsequent visits.
+            if (!_detectionService.IsLoaded || !_recognitionService.IsLoaded || !_livenessService.IsLoaded || !_ppeService.IsLoaded)
+            {
+                var detectionModelPath = await EnsureModelFileAsync("face_detection_yunet_2023mar.onnx");
+                var recognitionModelPath = await EnsureModelFileAsync("face_recognition_sface_2021dec.onnx");
+                var livenessModelPath = await EnsureModelFileAsync("2.7_80x80_MiniFASNetV2.onnx");
+                var ppeModelPath = await EnsureModelFileAsync("ppe_detection.onnx");
+
+                if (!_detectionService.IsLoaded)
+                    await Task.Run(() => _detectionService.LoadModel(detectionModelPath));
+
+                if (!_recognitionService.IsLoaded)
+                    await Task.Run(() => _recognitionService.LoadModel(recognitionModelPath));
+
+                if (!_livenessService.IsLoaded)
+                    await Task.Run(() => _livenessService.LoadModel(livenessModelPath));
+
+                if (!_ppeService.IsLoaded)
+                    await Task.Run(() => _ppeService.LoadModel(ppeModelPath));
+            }
 
             await RefreshWorkerCacheAsync();
 
@@ -202,6 +224,26 @@ namespace FaceAttendanceApp
 
             // Ready and waiting for the user to tap Start Scan.
             ScanStateLabel.Text = "Ready to scan";
+        }
+
+        /// <summary>
+        /// Copies a bundled model file from the app package into app data storage (if not
+        /// already there), and returns the plain file path. This is MAUI-specific logic, so it
+        /// lives here in the UI project — Core's LoadModel(string) only ever receives the
+        /// finished path string and knows nothing about FileSystem/app packaging.
+        /// </summary>
+        private static async Task<string> EnsureModelFileAsync(string fileName)
+        {
+            var modelPath = Path.Combine(FileSystem.AppDataDirectory, fileName);
+
+            if (!File.Exists(modelPath))
+            {
+                using var assetStream = await FileSystem.OpenAppPackageFileAsync(fileName);
+                using var fileStream = File.Create(modelPath);
+                await assetStream.CopyToAsync(fileStream);
+            }
+
+            return modelPath;
         }
 
         private void ApplyCaptureResolution()

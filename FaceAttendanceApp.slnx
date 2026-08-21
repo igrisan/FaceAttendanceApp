@@ -1,5 +1,6 @@
 <Solution>
-  <Project Path="FaceAttendanceApp.csproj">
+  <Project Path="../FaceAttendanceApp.Core/FaceAttendanceApp.Core.csproj" Id="488a0055-8e7e-48bf-9205-03956474334a" />
+  <Project Path="FaceAttendanceApp.MAUI.csproj">
     <Deploy Solution="Debug|*" />
   </Project>
 </Solution>

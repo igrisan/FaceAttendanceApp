@@ -9,9 +9,9 @@ namespace FaceAttendanceApp
     [QueryProperty(nameof(WorkerId), "WorkerId")]
     public partial class WorkerEditPage : ContentPage
     {
-        private readonly FaceDetectionService _detectionService = new();
-        private readonly FaceRecognitionService _recognitionService = new();
-        private readonly MaskHelmetDetectionService _ppeService = new();
+        private readonly FaceDetectionService _detectionService;
+        private readonly FaceRecognitionService _recognitionService;
+        private readonly MaskHelmetDetectionService _ppeService;
 
         private WorkerDatabase? _database;
         private Worker? _worker;
@@ -47,9 +47,12 @@ namespace FaceAttendanceApp
 
         public string WorkerId { get; set; } = string.Empty;
 
-        public WorkerEditPage()
+        public WorkerEditPage(FaceDetectionService detectionService, FaceRecognitionService recognitionService, MaskHelmetDetectionService ppeService)
         {
             InitializeComponent();
+            _detectionService = detectionService;
+            _recognitionService = recognitionService;
+            _ppeService = ppeService;
         }
 
         protected override async void OnAppearing()
@@ -80,6 +83,26 @@ namespace FaceAttendanceApp
             NameEntry.Text = _worker.Name;
 
             await RefreshFaceReferencesAsync();
+        }
+
+        /// <summary>
+        /// Copies a bundled model file from the app package into app data storage (if not
+        /// already there), and returns the plain file path. This is MAUI-specific logic, so it
+        /// lives here in the UI project — Core's LoadModel(string) only ever receives the
+        /// finished path string and knows nothing about FileSystem/app packaging.
+        /// </summary>
+        private static async Task<string> EnsureModelFileAsync(string fileName)
+        {
+            var modelPath = Path.Combine(FileSystem.AppDataDirectory, fileName);
+
+            if (!File.Exists(modelPath))
+            {
+                using var assetStream = await FileSystem.OpenAppPackageFileAsync(fileName);
+                using var fileStream = File.Create(modelPath);
+                await assetStream.CopyToAsync(fileStream);
+            }
+
+            return modelPath;
         }
 
         private async Task RefreshFaceReferencesAsync()
@@ -209,12 +232,26 @@ namespace FaceAttendanceApp
                 return;
             }
 
-            if (!_detectionService.IsLoaded)
+            // Only load models the FIRST time — since services are registered as singletons in
+            // MauiProgram.cs, IsLoaded stays true across page visits, so this skips reloading
+            // from disk (and re-initializing each ONNX session) on subsequent visits.
+            if (!_detectionService.IsLoaded || !_recognitionService.IsLoaded || !_ppeService.IsLoaded)
             {
                 RecaptureStatusLabel.Text = "Loading models...";
-                await Task.Run(_detectionService.LoadModel);
-                await Task.Run(_recognitionService.LoadModel);
-                await Task.Run(_ppeService.LoadModel);
+
+                var detectionModelPath = await EnsureModelFileAsync("face_detection_yunet_2023mar.onnx");
+                var recognitionModelPath = await EnsureModelFileAsync("face_recognition_sface_2021dec.onnx");
+                var ppeModelPath = await EnsureModelFileAsync("ppe_detection.onnx");
+
+                if (!_detectionService.IsLoaded)
+                    await Task.Run(() => _detectionService.LoadModel(detectionModelPath));
+
+                if (!_recognitionService.IsLoaded)
+                    await Task.Run(() => _recognitionService.LoadModel(recognitionModelPath));
+
+                if (!_ppeService.IsLoaded)
+                    await Task.Run(() => _ppeService.LoadModel(ppeModelPath));
+
                 RecaptureStatusLabel.Text = $"Position face in frame (0/{SamplesRequired})";
             }
 

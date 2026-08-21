@@ -8,9 +8,9 @@ namespace FaceAttendanceApp
 {
     public partial class RegisterWorkerPage : ContentPage
     {
-        private readonly FaceDetectionService _detectionService = new();
-        private readonly FaceRecognitionService _recognitionService = new();
-        private readonly MaskHelmetDetectionService _ppeService = new();
+        private readonly FaceDetectionService _detectionService;
+        private readonly FaceRecognitionService _recognitionService;
+        private readonly MaskHelmetDetectionService _ppeService;
 
         private WorkerDatabase? _database;
         private float[]? _lastEmbedding;
@@ -48,9 +48,12 @@ namespace FaceAttendanceApp
             "Custom..."
         };
 
-        public RegisterWorkerPage()
+        public RegisterWorkerPage(FaceDetectionService detectionService, FaceRecognitionService recognitionService, MaskHelmetDetectionService ppeService)
         {
             InitializeComponent();
+            _detectionService = detectionService;
+            _recognitionService = recognitionService;
+            _ppeService = ppeService;
         }
 
         protected override async void OnAppearing()
@@ -78,15 +81,31 @@ namespace FaceAttendanceApp
             _database = new WorkerDatabase(dbPath);
             Debug.WriteLine($"[RegisterWorkerPage] Database initialized at {dbPath}");
 
-            LoadingLabel.Text = "Loading face recognition models...";
+            // Only load models the FIRST time — since services are now registered as
+            // singletons in MauiProgram.cs, IsLoaded stays true across page visits, so this
+            // skips reloading from disk (and re-initializing the ONNX session) on subsequent
+            // visits to this page.
+            if (!_detectionService.IsLoaded || !_recognitionService.IsLoaded || !_ppeService.IsLoaded)
+            {
+                LoadingLabel.Text = "Loading face recognition models...";
 
-            // Anti-spoof model is NOT loaded here — registration is a static, in-person
-            // enrollment step, so liveness checking is not required. PPE model IS loaded,
-            // though, so variant captures (e.g. "With Mask") can be verified against what's
-            // actually visible in the photo.
-            await Task.Run(_detectionService.LoadModel);
-            await Task.Run(_recognitionService.LoadModel);
-            await Task.Run(_ppeService.LoadModel);
+                // Anti-spoof model is NOT loaded here — registration is a static, in-person
+                // enrollment step, so liveness checking is not required. PPE model IS loaded,
+                // though, so variant captures (e.g. "With Mask") can be verified against what's
+                // actually visible in the photo.
+                var detectionModelPath = await EnsureModelFileAsync("face_detection_yunet_2023mar.onnx");
+                var recognitionModelPath = await EnsureModelFileAsync("face_recognition_sface_2021dec.onnx");
+                var ppeModelPath = await EnsureModelFileAsync("ppe_detection.onnx");
+
+                if (!_detectionService.IsLoaded)
+                    await Task.Run(() => _detectionService.LoadModel(detectionModelPath));
+
+                if (!_recognitionService.IsLoaded)
+                    await Task.Run(() => _recognitionService.LoadModel(recognitionModelPath));
+
+                if (!_ppeService.IsLoaded)
+                    await Task.Run(() => _ppeService.LoadModel(ppeModelPath));
+            }
 
             LoadingLabel.Text = "Starting camera...";
 
@@ -110,6 +129,26 @@ namespace FaceAttendanceApp
             }
 
             LoadingOverlay.IsVisible = false;
+        }
+
+        /// <summary>
+        /// Copies a bundled model file from the app package into app data storage (if not
+        /// already there), and returns the plain file path. This is MAUI-specific logic, so it
+        /// lives here in the UI project — Core's LoadModel(string) only ever receives the
+        /// finished path string and knows nothing about FileSystem/app packaging.
+        /// </summary>
+        private static async Task<string> EnsureModelFileAsync(string fileName)
+        {
+            var modelPath = Path.Combine(FileSystem.AppDataDirectory, fileName);
+
+            if (!File.Exists(modelPath))
+            {
+                using var assetStream = await FileSystem.OpenAppPackageFileAsync(fileName);
+                using var fileStream = File.Create(modelPath);
+                await assetStream.CopyToAsync(fileStream);
+            }
+
+            return modelPath;
         }
 
         private void OnSwitchCameraClicked(object? sender, EventArgs e)

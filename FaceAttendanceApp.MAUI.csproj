@@ -86,6 +86,10 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <ProjectReference Include="..\FaceAttendanceApp.Core\FaceAttendanceApp.Core.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
 	  <Compile Update="Pages\SeedTestDataPage.xaml.cs">
 	    <DependentUpon>SeedTestDataPage.xaml</DependentUpon>
 	  </Compile>

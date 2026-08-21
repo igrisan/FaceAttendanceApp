@@ -24,8 +24,8 @@ namespace FaceAttendanceApp
     /// </summary>
     public partial class SeedTestDataPage : ContentPage
     {
-        private readonly FaceDetectionService _detectionService = new();
-        private readonly FaceRecognitionService _recognitionService = new();
+        private readonly FaceDetectionService _detectionService;
+        private readonly FaceRecognitionService _recognitionService;
         private WorkerDatabase? _database;
         private TestDataSeeder? _seeder;
 
@@ -33,9 +33,11 @@ namespace FaceAttendanceApp
         // returns — log embedding.Length once from a real capture before trusting this.
         private const int EmbeddingDim = 128;
 
-        public SeedTestDataPage()
+        public SeedTestDataPage(FaceDetectionService detectionService, FaceRecognitionService recognitionService)
         {
             InitializeComponent();
+            _detectionService = detectionService;
+            _recognitionService = recognitionService;
         }
 
         protected override async void OnAppearing()
@@ -48,11 +50,43 @@ namespace FaceAttendanceApp
             _database = new WorkerDatabase(dbPath);
             _seeder = new TestDataSeeder(_database);
 
-            await Task.Run(_detectionService.LoadModel);
-            await Task.Run(_recognitionService.LoadModel);
+            // Only load models the FIRST time — since services are registered as singletons
+            // in MauiProgram.cs, IsLoaded stays true across page visits, so this skips
+            // reloading from disk (and re-initializing each ONNX session) on subsequent visits.
+            if (!_detectionService.IsLoaded || !_recognitionService.IsLoaded)
+            {
+                var detectionModelPath = await EnsureModelFileAsync("face_detection_yunet_2023mar.onnx");
+                var recognitionModelPath = await EnsureModelFileAsync("face_recognition_sface_2021dec.onnx");
+
+                if (!_detectionService.IsLoaded)
+                    await Task.Run(() => _detectionService.LoadModel(detectionModelPath));
+
+                if (!_recognitionService.IsLoaded)
+                    await Task.Run(() => _recognitionService.LoadModel(recognitionModelPath));
+            }
 
             var count = (await _database.GetAllWorkersAsync()).Count;
             StatusLabel.Text = $"Ready. Current worker count: {count}";
+        }
+
+        /// <summary>
+        /// Copies a bundled model file from the app package into app data storage (if not
+        /// already there), and returns the plain file path. This is MAUI-specific logic, so it
+        /// lives here in the UI project — Core's LoadModel(string) only ever receives the
+        /// finished path string and knows nothing about FileSystem/app packaging.
+        /// </summary>
+        private static async Task<string> EnsureModelFileAsync(string fileName)
+        {
+            var modelPath = Path.Combine(FileSystem.AppDataDirectory, fileName);
+
+            if (!File.Exists(modelPath))
+            {
+                using var assetStream = await FileSystem.OpenAppPackageFileAsync(fileName);
+                using var fileStream = File.Create(modelPath);
+                await assetStream.CopyToAsync(fileStream);
+            }
+
+            return modelPath;
         }
 
         private async void OnSeedRandomClicked(object? sender, EventArgs e)
